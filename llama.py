@@ -68,12 +68,18 @@ def extract_marksheet_data(image_data):
         )
         raw_response = response.choices[0].message.content if response.choices else ""
         if not raw_response.strip():
-            return {"Error": "Empty response from API"}
+            return {"Error": "Invalid document uploaded. Please upload a valid marksheet."}
+
         extracted_data = parse_json_response(raw_response)
+
+        # Validate extracted data
+        required_fields = ["Name", "Roll No.", "Examination Year", "Result"]
+        if not all(field in extracted_data and extracted_data[field].strip() for field in required_fields):
+            return {"Error": "Invalid document uploaded. Please upload a valid marksheet."}
+
         return extracted_data
     except Exception as e:
         return {"Error": str(e)}
-
 # --- Custom CSS for Full-Width Button and Table ---
 st.markdown(
     """
@@ -126,44 +132,48 @@ with col2:
         st.info("No image uploaded.")
 
 # --- Process Extraction & Comparison ---
-if submit_manual and uploaded_file:
-    with st.spinner("Extracting details from image..."):
-        image_data = encode_image(uploaded_file)
-        extracted_info = extract_marksheet_data(image_data)
+extracted_info = {}
+if submit_manual:
+    if not uploaded_file:
+        st.error("❌ Please upload a marksheet to compare.")
+    else:
+        with st.spinner("Extracting details from image..."):
+            image_data = encode_image(uploaded_file)
+            extracted_info = extract_marksheet_data(image_data)
     
-    if "Error" in extracted_info:
+    if isinstance(extracted_info, dict) and "Error" in extracted_info:
         st.error(f"Error: {extracted_info['Error']}")
     else:
-        st.subheader("Comparison Summary")
-        fields = ["Name", "Roll No.", "Examination Year", "Result"]
-        manual_values = {
-            "Name": manual_name.strip(),
-            "Roll No.": manual_roll.strip(),
-            "Examination Year": manual_exam_year.strip(),
-            "Result": manual_result.strip()
-        }
-        extracted_values = {
-            "Name": extracted_info.get("Name", "N/A").strip(),
-            "Roll No.": extracted_info.get("Roll No.", "N/A").strip(),
-            "Examination Year": extracted_info.get("Examination Year", "N/A").strip(),
-            "Result": extracted_info.get("Result", "N/A").strip()
-        }
-        
-        # Create Comparison Table
-        comparison = []
-        for field in fields:
-            m_val = manual_values[field]
-            e_val = extracted_values[field]
-            match = "Yes" if m_val and e_val and m_val.lower() == e_val.lower() else "No"
-            comparison.append({
-                "Field": field,
-                "Manual Input": m_val if m_val else "Not Provided",
-                "Extracted Value": e_val if e_val else "Not Provided",
-                "Match": match
-            })
-        
-        # Convert list to DataFrame
-        comparison_df = pd.DataFrame(comparison)
+        # --- Show Comparison Summary Only If No Error ---
+        if extracted_info:
+            st.subheader("Comparison Summary")
+            fields = ["Name", "Roll No.", "Examination Year", "Result"]
+            manual_values = {
+                "Name": manual_name.strip(),
+                "Roll No.": manual_roll.strip(),
+                "Examination Year": manual_exam_year.strip(),
+                "Result": manual_result.strip()
+            }
+            extracted_values = {
+                "Name": extracted_info.get("Name", "N/A").strip(),
+                "Roll No.": extracted_info.get("Roll No.", "N/A").strip(),
+                "Examination Year": extracted_info.get("Examination Year", "N/A").strip(),
+                "Result": extracted_info.get("Result", "N/A").strip()
+            }
 
-        # Display table with full width
-        st.dataframe(comparison_df, hide_index=True, use_container_width=True)
+            # Create Comparison Table
+            comparison = []
+            for field in fields:
+                m_val = manual_values[field]
+                e_val = extracted_values[field]
+                match = "Yes" if m_val and e_val and m_val.lower() == e_val.lower() else "No"
+                comparison.append({
+                    "Field": field,
+                    "Manual Input": m_val if m_val else "Not Provided",
+                    "Extracted Value": e_val if e_val else "Not Provided",
+                    "Match": match
+                })
+
+            # Convert list to DataFrame
+            comparison_df = pd.DataFrame(comparison)
+            st.dataframe(comparison_df, hide_index=True, use_container_width=True)
